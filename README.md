@@ -1,4 +1,4 @@
-# wagoogameopen
+# wagoogameopen FOR free website only limiteds
 you should know by now | 
 discord.gg/wagoogus
 ![image](https://github.com/TrueStrikes/wagoogameopen/assets/137821671/29de8bc6-6e5f-4035-93a5-c7a099af9b99)
