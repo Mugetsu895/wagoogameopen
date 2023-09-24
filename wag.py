@@ -1,117 +1,97 @@
-import json
 import requests
+import pyautogui
+import json
 import webbrowser
-import pygame
+import os
 import time
-import pyperclip
+from colorama import init, Fore
 
-def load_config():
-    with open("config.json", "r") as config_file:
-        return json.load(config_file)
+# Initialize colorama to support colored text in the console
+init()
 
-def retrieve_latest_message(channel_id, bot_token):
+# Set to keep track of opened links
+opened_links = set()
+
+
+def retrieve_latest_message(channel_id, token):
     headers = {
-        'authorization': bot_token
+        'authorization': token
     }
     params = {
         'limit': 1
     }
     r = requests.get(f'https://discord.com/api/v8/channels/{channel_id}/messages', headers=headers, params=params)
+    messages = json.loads(r.text)
+
+    if not isinstance(messages, list) or len(messages) == 0:
+        return
+
+    latest_message = messages[0]  # The latest message is the first in the list
+
+    embeds = latest_message.get('embeds')
+    if embeds:
+        for embed in embeds:
+            if 'roblox.com/catalog/' in embed.get('url', '') and embed.get('type') == 'rich':
+                if 'in-game only' not in embed.get('description', '').lower():  # Check if "experience" is in the description
+                    roblox_url = embed.get('url')
+                    if roblox_url and roblox_url not in opened_links:
+                        opened_links.add(roblox_url)  # Add the link to the set
+                        message_to_send = "Opened a link: " + roblox_url
+                        print(f"{Fore.CYAN}{message_to_send}{Fore.RESET}")
+                        open_in_browser('roblox://experiences/start?placeId=975820487')
+
+
+
+    content = latest_message.get('content')
+    if content and 'roblox.com/catalog/' in content:
+        if 'in-game only' not in content.lower():  # Check if "experience" is in the content text
+            roblox_links = find_roblox_links(content)
+            for roblox_url in roblox_links:
+                if roblox_url and roblox_url not in opened_links:
+                    opened_links.add(roblox_url)
+                    message_to_send = "Opened a link: " + roblox_url
+                    print(f"{Fore.CYAN}{message_to_send}{Fore.RESET}")
+                    open_in_browser('roblox://experiences/start?placeId=975820487')
+
+def open_in_browser(url):
+    webbrowser.open(url, new=0, autoraise=True)
+
+def find_roblox_links(text):
+    import re
+    return re.findall(r'https?://(?:www\.)?roblox\.com/catalog/\d+', text)
+
+def load_config():
     try:
-        message = r.json()[0]  # Only retrieve the latest message
-    except json.JSONDecodeError as e:
-        print("JSON decode error:", e)
+        with open('config.json', 'r') as config_file:
+            config = json.load(config_file)
+            return config
+    except FileNotFoundError:
+        print("Config file 'config.json' not found.")
         return None
-
-    return message
-
-def extract_game_id(url):
-    game_id_start = url.find("https://www.roblox.com/games/") + len("https://www.roblox.com/games/")
-    game_id = ''.join([c for c in url[game_id_start:game_id_start + 11] if c.isdigit()])
-    return game_id
-
-def print_colored_message(message, color_code):
-    print(f"\033[{color_code}m{message}\033[0m")
+    except json.JSONDecodeError:
+        print("Invalid JSON format in 'config.json'.")
+        return None
 
 def main():
     config = load_config()
-    bot_token = config.get('bot_token')
-    channel_id = config.get('channel_id')
-
-    if not bot_token or not channel_id:
-        print("Error: bot_token or channel_id not found in config.json")
+    if config is None:
         return
 
-    pygame.init()
-    pygame.mixer.init()
-    sound = pygame.mixer.Sound("t.mp3")
+    channel_id = config.get('channel_id')
+    token = config.get('bot_token')
 
-    processed_message_ids = []
-    open_links = True  # Control whether to open Roblox links
-    last_clipboard = ""  # Store the last clipboard content to prevent repeated actions
-    try:
-        while True:
-            latest_message = retrieve_latest_message(channel_id, bot_token)
-            if latest_message and latest_message['id'] not in processed_message_ids:
-                processed_message_ids.append(latest_message['id'])
+    if not channel_id or not token:
+        print("Missing required variables in 'config.json'.")
+        return
 
-                author = f"Author: \033[36m{latest_message['author']['username']}#{latest_message['author']['discriminator']}\033[0m"
-                content = f"Content: \033[35m{latest_message.get('content', '')}\033[0m"
+    # Clear the console and print "The bot is working, there's just nothing to open" in yellow
+    os.system('cls' if os.name == 'nt' else 'clear')
+    print(f"{Fore.CYAN}Autosearch V2 is working, there's just nothing to open.{Fore.RESET}")
 
-                print_colored_message(author, 36)  # Cyan color
-                print_colored_message(content, 35)  # Purple color
-
-                if open_links:
-                    game_found = False
-                    for embed in latest_message.get('embeds', []):
-                        print("Embed:")
-                        for key, value in embed.items():
-                            if isinstance(value, str):
-                                print(f"  {key}: {value}")
-                            elif key == 'fields':
-                                for field in value:
-                                    field_name = field.get('name', '')
-                                    field_value = field.get('value', '')
-                                    print(f"  Field: {field_name}: {field_value}")
-
-                        game_id = None
-                        for field in embed.get('fields', []):
-                            field_value = field.get('value', '')
-                            if "https://www.roblox.com/games/" in field_value:
-                                game_id = extract_game_id(field_value)
-                                break
-
-                        if game_id:
-                            print(f"  Game ID: {game_id}")
-                            url = f"roblox://placeID={game_id}"
-                            print(f"Opening URL: {url}")
-                            webbrowser.open_new_tab(url)
-                            game_found = True
-                            break
-
-                    if not game_found:
-                        default_url = "roblox://placeID=975820487"  # Default Roblox game URL
-                        print(f"No game mentioned, opening default URL: {default_url}")
-                        webbrowser.open_new_tab(default_url)
-
-                    sound.play()
-
-            clipboard_content = pyperclip.paste().lower()
-            if clipboard_content != last_clipboard:
-                if "stop" in clipboard_content:
-                    open_links = False
-                    print_colored_message("Script: Roblox links will not be opened", 32)  # Green color
-                elif "start" in clipboard_content:
-                    open_links = True
-                    print_colored_message("Script: Roblox links will be opened", 32)  # Green color
-                last_clipboard = clipboard_content
-
-            time.sleep(0.5)  # Wait for 0.5 seconds before checking again
-
-    except KeyboardInterrupt:
-        print_colored_message("\nStopping...", 31)  # Red color
-
-    pygame.mixer.quit()
+    # Set the loop to run indefinitely with a 0.2 seconds wait
+    while True:
+        retrieve_latest_message(channel_id, token)
+        time.sleep(0.2)
 
 if __name__ == "__main__":
     main()
