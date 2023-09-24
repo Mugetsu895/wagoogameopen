@@ -1,5 +1,4 @@
 import requests
-import pyautogui
 import json
 import webbrowser
 import os
