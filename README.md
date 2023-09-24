@@ -9,6 +9,8 @@ discord.gg/wagoogus
 
 # errors.
 Script closes  = incorrect config / you dont have the modules.
+= go in cmd and type pip install requests
+pip install colorama
 
 
 bot token is user token.
